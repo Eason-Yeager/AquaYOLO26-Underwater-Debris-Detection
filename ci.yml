@@ -1,0 +1,148 @@
+name: AquaYOLO26 CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies (CPU-only for CI)
+        run: |
+          pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy opencv-python-headless PyYAML tqdm matplotlib scipy
+          pip install pytest pytest-cov
+
+      - name: Install package
+        run: pip install -e . --no-deps
+
+      - name: Run unit tests
+        run: pytest tests/ -v --cov=aquayolo26 --cov-report=term-missing
+
+  synthetic-pipeline-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy opencv-python-headless PyYAML tqdm matplotlib scipy
+          pip install -e . --no-deps
+
+      - name: Generate synthetic datasets
+        run: |
+          python tools/generate_synthetic_data.py \
+            --n-train 20 --n-val 5 --n-test 5
+
+      - name: Verify datasets
+        run: python tools/verify_dataset.py --all
+
+      - name: Test dataset loader
+        run: python -c "
+          from aquayolo26.utils.dataset import UnderwaterDebrisDataset, collate_fn
+          from torch.utils.data import DataLoader
+          ds = UnderwaterDebrisDataset('data/seaclear', split='train', consolidate_classes=True)
+          loader = DataLoader(ds, batch_size=2, collate_fn=collate_fn)
+          batch = next(iter(loader))
+          print('Dataset loader OK. Batch keys:', list(batch.keys()))
+          print('Image shape:', batch['images'].shape)
+          "
+
+      - name: Test module imports and forward pass
+        run: python -c "
+          import torch
+          from aquayolo26.modules.uwbn import UWBN, replace_bn_with_uwbn
+          from aquayolo26.modules.turb_stal import TurbidityEstimator, TurbSTAL
+          from aquayolo26.modules.da_progloss import DAProgLoss
+          from aquayolo26.modules.grl import GradientReversalLayer, compute_lambda_da
+
+          # UWBN forward pass
+          uwbn = UWBN(num_features=64)
+          x = torch.randn(2, 64, 32, 32)
+          y = uwbn(x)
+          assert y.shape == x.shape, f'UWBN shape mismatch: {y.shape}'
+          print('UWBN: OK', y.shape)
+
+          # GRL
+          grl = GradientReversalLayer(lambda_da=0.5)
+          x = torch.randn(4, 256, requires_grad=True)
+          y = grl(x)
+          assert y.shape == x.shape, 'GRL shape mismatch'
+          print('GRL: OK')
+
+          # Turbidity estimator
+          te = TurbidityEstimator(in_channels=256)
+          feat = torch.randn(2, 256, 20, 20)
+          tau = te(feat)
+          assert tau.shape == (2,), f'TurbEst shape: {tau.shape}'
+          assert (tau >= 0).all() and (tau <= 1).all(), 'tau not in [0,1]'
+          print('TurbidityEstimator: OK', tau)
+
+          # DA-ProgLoss
+          da = DAProgLoss(neck_channels=256)
+          loss_box = torch.tensor(1.0, requires_grad=True)
+          loss_cls = torch.tensor(0.5, requires_grad=True)
+          loss_obj = torch.tensor(0.8, requires_grad=True)
+          loss_turb = torch.tensor(0.01, requires_grad=True)
+          neck_feat = torch.randn(2, 256, 10, 10)
+          domain_labels = torch.tensor([0.0, 1.0])
+          out = da(loss_box, loss_cls, loss_obj, loss_turb, neck_feat, domain_labels, 100, 1000)
+          assert 'total' in out, 'DA loss missing total key'
+          print('DAProgLoss: OK', {k: f'{v:.4f}' for k, v in out.items() if isinstance(v, (int, float))})
+
+          # compute_lambda_da schedule
+          lda = compute_lambda_da(500, 1000)
+          assert 0 <= lda <= 1.0, f'lambda_da out of range: {lda}'
+          print(f'GRL schedule: lambda_da(t=500/1000) = {lda:.4f}')
+          print('All module tests passed.')
+          "
+
+      - name: Test metrics
+        run: python -c "
+          import numpy as np
+          from aquayolo26.utils.metrics import evaluate_map, cross_domain_metrics
+
+          # Dummy predictions and GTs
+          predictions = [
+              {'boxes': np.array([[10,10,50,50],[100,100,200,200]], dtype=np.float32),
+               'scores': np.array([0.9, 0.7]),
+               'classes': np.array([0, 1])},
+          ]
+          ground_truths = [
+              {'boxes': np.array([[12,12,48,48],[110,110,190,190]], dtype=np.float32),
+               'classes': np.array([0, 1])},
+          ]
+          metrics = evaluate_map(predictions, ground_truths, num_classes=5)
+          print('Metrics:', {k:v for k,v in metrics.items() if k != 'per_class_AP'})
+
+          cd = cross_domain_metrics(72.3, 47.6)
+          print('Cross-domain:', cd)
+          print('Metrics tests passed.')
+          "
