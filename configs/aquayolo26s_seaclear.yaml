@@ -1,0 +1,30 @@
+model: aquayolo26s
+imgsz: 640
+epochs: 200
+batch: 16
+optimizer: MuSGD
+lr0: 0.01
+lrf: 0.01
+momentum: 0.937
+weight_decay: 0.0005
+warmup_epochs: 3
+seed: 42
+deterministic: true
+
+uwbn:
+  enabled: true
+  alpha_phys: [0.80, 0.04, 0.01]
+  eps: 1.0e-5
+
+turb_stal:
+  enabled: true
+  lambda_tau: 0.5
+  small_area_threshold: 0.01
+  k0: 10
+  beta_k: 1.0
+  lambda_turb: 0.01
+
+da_progloss:
+  enabled: true
+  lambda_max: 1.0
+  gamma: 10.0

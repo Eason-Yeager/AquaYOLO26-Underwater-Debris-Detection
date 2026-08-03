@@ -1,0 +1,12 @@
+model: aquayolo26n
+imgsz: 640
+epochs: 200
+batch: 16
+uwbn:
+  enabled: true
+  alpha_phys: [0.80, 0.04, 0.01]
+  eps: 1.0e-5
+turb_stal:
+  enabled: false
+da_progloss:
+  enabled: false

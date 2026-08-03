@@ -1,0 +1,12 @@
+model: aquayolo26n
+imgsz: 640
+epochs: 200
+batch: 16
+uwbn:
+  enabled: false
+turb_stal:
+  enabled: false
+da_progloss:
+  enabled: true
+  lambda_max: 1.0
+  gamma: 10.0

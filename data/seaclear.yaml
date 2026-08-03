@@ -1,0 +1,10 @@
+path: /path/to/SeaClear
+train: data/splits/seaclear_train.txt
+val: data/splits/seaclear_val.txt
+test: data/splits/seaclear_test.txt
+names:
+  0: Plastic
+  1: Metal
+  2: Glass
+  3: Fishing gear
+  4: Other debris

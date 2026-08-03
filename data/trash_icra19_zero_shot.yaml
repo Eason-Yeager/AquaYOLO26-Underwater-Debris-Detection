@@ -1,0 +1,5 @@
+path: /path/to/Trash-ICRA19
+test: data/splits/trash_icra19_test.txt
+names:
+  0: Debris
+  1: Background

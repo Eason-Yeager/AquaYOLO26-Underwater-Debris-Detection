@@ -1,0 +1,6 @@
+path: /path/to/TrashCan-Instance
+target_unlabeled: data/splits/trashcan_uda_unlabeled_1000.txt
+test: data/splits/trashcan_test.txt
+names:
+  0: Debris
+  1: Background

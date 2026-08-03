@@ -1,0 +1,10 @@
+model: yolo26n
+imgsz: 640
+epochs: 200
+batch: 16
+optimizer: MuSGD
+lr0: 0.01
+lrf: 0.01
+momentum: 0.937
+weight_decay: 0.0005
+seed: 42
